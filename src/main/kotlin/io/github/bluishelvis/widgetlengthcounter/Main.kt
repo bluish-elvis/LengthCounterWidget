@@ -12,7 +12,6 @@ import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.impl.status.EditorBasedWidget
-import com.intellij.openapi.wm.impl.status.PositionPanel.DISABLE_FOR_EDITOR
 import com.intellij.util.Alarm
 import com.intellij.util.Consumer
 import com.intellij.util.ui.update.MergingUpdateQueue
@@ -23,8 +22,8 @@ import java.awt.event.MouseEvent
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 
-class Main(project:Project):EditorBasedWidget(project), StatusBarWidget.Multiframe, StatusBarWidget.TextPresentation,
-	BulkAwareDocumentListener.Simple, PropertyChangeListener {
+class Main(project:Project):EditorBasedWidget(project), StatusBarWidget.TextPresentation, BulkAwareDocumentListener.Simple,
+	PropertyChangeListener {
 
 	private var myAlarm:Alarm? = null
 	private var myQueue:MergingUpdateQueue? = null
@@ -34,7 +33,7 @@ class Main(project:Project):EditorBasedWidget(project), StatusBarWidget.Multifra
 	private var myTip:@NlsContexts.Label String? = null
 
 	override fun ID():String = LCWidgetFactory.ID
-	override fun copy():StatusBarWidget = Main(project)
+//	override fun copy():StatusBarWidget = Main(project)
 	override fun getPresentation():StatusBarWidget.WidgetPresentation = this
 
 	override fun getText():String = myText ?: ""
@@ -50,32 +49,32 @@ class Main(project:Project):EditorBasedWidget(project), StatusBarWidget.Multifra
 			//${lines}L ${chars}c
 			val lines = editor.document.lineCount
 			val chars = editor.document.textLength
-			"${lines}L ${Companion.SEPARATOR} ${chars}c"
+			"${lines}L $SEPARATOR ${chars}c"
 		} else ""
 
 	private fun updatePosition(editor:Editor?) {
 		myQueue!!.queue(Update.create(this) {
-			val empty = editor==null||DISABLE_FOR_EDITOR.isIn(editor)
+			val empty = editor==null
 			if(!empty&&!isOurEditor(editor)) return@create
 			val newText = if(empty) "" else getText(editor!!)
 			if(newText==myText) return@create
 			myText = newText
 			if(myStatusBar!=null) {
-				myStatusBar.updateWidget(ID())
+				myStatusBar?.updateWidget(ID())
 			}
 		})
 	}
 
 	private val nowComponent:Component?
 		get() = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
-			?: IdeFocusManager.getInstance(myProject).let {fMan ->
+			?: IdeFocusManager.getInstance(project).let {fMan ->
 				fMan.lastFocusedIdeWindow?.let {fMan.getLastFocusedFor(it)}
 			}
 
 	private val nowEditor:Editor?
 		get() = nowComponent.let {component ->
-			(if(component is EditorComponentImpl) component.editor else editor).let {
-				if(it!=null&&!it.isDisposed) it else null
+			(if(component is EditorComponentImpl) component.editor else null)?.let {
+				if(!it.isDisposed) it else null
 			}
 		}
 
@@ -85,13 +84,16 @@ class Main(project:Project):EditorBasedWidget(project), StatusBarWidget.Multifra
 		myQueue = MergingUpdateQueue(LCWidgetFactory.ID, 100, true, null, this)
 		val multiCaster = EditorFactory.getInstance().eventMulticaster
 		multiCaster.addDocumentListener(this, this)
-		KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener(SWING_FOCUS_OWNER_PROPERTY, this)
-		Disposer.register(
-			this
-		) {
+		KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener(this)
+		Disposer.register(this) {
 			KeyboardFocusManager.getCurrentKeyboardFocusManager()
-				.removePropertyChangeListener(SWING_FOCUS_OWNER_PROPERTY, this)
+				.removePropertyChangeListener(this)
 		}
+	}
+
+	override fun dispose() {
+		super.dispose()
+		KeyboardFocusManager.getCurrentKeyboardFocusManager().removePropertyChangeListener(this)
 	}
 
 	override fun afterDocumentChange(document:Document) {
